@@ -108,7 +108,8 @@
     <div class="toolbar">
       <button class="btn btn-primary" id="priceBtn" onclick="priceLot()">&#8595; Price this lot</button>
       <button class="btn" id="allBtn" onclick="priceAll()">&#9635; Price all lots</button>
-      <button class="btn" onclick="exportCSV()">&#8593; Export CSV</button>
+      <button class="btn" onclick="exportCSV()">&#8593; Export lot CSV</button>
+      <button class="btn" onclick="exportAllCSV()">&#8595; Download all lots CSV</button>
       <span class="status-text" id="statusTxt">Select a lot and click "Price this lot"</span>
     </div>
     <div class="prog-wrap"><div class="prog-bar" id="progBar"></div></div>
@@ -117,6 +118,7 @@
       <div class="stat"><div class="stat-label">Cards priced</div><div class="stat-val" id="sPriced">0</div></div>
       <div class="stat"><div class="stat-label">Total lots</div><div class="stat-val" id="sLots">24</div></div>
       <div class="stat"><div class="stat-label">Avg NM raw</div><div class="stat-val" id="sAvg">—</div></div>
+      <div class="stat"><div class="stat-label">Best case profit</div><div class="stat-val" id="sBCP" style="color:var(--success)">—</div></div>
     </div>
 
     <div class="search-wrap">
@@ -132,6 +134,7 @@
             <th>Set</th>
             <th>Lang</th>
             <th>Paid</th>
+            <th>Grade Fee</th>
             <th>TCGPlayer NM<span class="src">PokeWallet</span></th>
             <th>Ungraded<span class="src">PriceCharting</span></th>
             <th>PSA 8<span class="src">PriceCharting</span></th>
@@ -145,6 +148,7 @@
         <tr style="border-top:2px solid var(--border);font-weight:700">
           <td colspan="4" style="padding:8px 12px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.05em">Lot Totals</td>
           <td class="price-cell" id="totPaid" style="padding:8px 12px"></td>
+          <td class="price-cell" id="totFee" style="padding:8px 12px"></td>
           <td class="price-cell" id="totNM" style="padding:8px 12px"></td>
           <td class="price-cell" id="totUG" style="padding:8px 12px"></td>
           <td class="price-cell" id="totP8" style="padding:8px 12px"></td>
@@ -170,6 +174,12 @@ let cache = {};
 let busy = false;
 
 function ckey(c){ return (c.n+'|'+c.s+'|'+c.l).toLowerCase(); }
+
+function setFee(lot, idx, val){
+  LOTS[lot][idx].fee = parseFloat(val)||0;
+  updateTotals();
+  updateStats();
+}
 
 function buildSidebar(){
   const el = document.getElementById('lotList');
@@ -214,6 +224,7 @@ function render(){
       <td class="set-name" title="${card.s}">${card.s}</td>
       <td>${lb(card.l)}</td>
       <td style="color:var(--muted)">${card.paid ? '$'+card.paid : '—'}</td>
+      <td><input type="number" min="0" step="0.01" placeholder="0" value="${card.fee||''}" onchange="setFee('${cur}',${i},this.value)" style="width:60px;background:var(--surface2);border:0.5px solid var(--border);border-radius:4px;padding:3px 5px;color:var(--text);font-size:11px;text-align:right"></td>
       <td class="price-cell">${nm}</td>
       <td class="price-cell">${ug}</td>
       <td class="price-cell">${p8}</td>
@@ -229,10 +240,10 @@ function render(){
 
 function updateTotals(){
   const cards = LOTS[cur];
-  let totPaid=0, totNM=0, totUG=0, totP8=0, totP9=0, totP10=0;
+  let totPaid=0, totFee=0, totNM=0, totUG=0, totP8=0, totP9=0, totP10=0;
   let hasAny=false;
   // Always sum paid regardless of pricing status
-  cards.forEach(card => { totPaid += (card.paid||0); });
+  cards.forEach(card => { totPaid += (card.paid||0); totFee += (card.fee||0); });
   cards.forEach(card => {
     const p = cache[ckey(card)];
     if(!p||p==='loading'||p==='nf') return;
@@ -245,12 +256,30 @@ function updateTotals(){
   });
   const fmt = v => v > 0 ? `<span class="price-ok">$${v.toFixed(2)}</span>` : '<span class="price-no">—</span>';
   document.getElementById('totPaid').innerHTML = totPaid > 0 ? `<span style="color:var(--muted);font-weight:700">$${totPaid.toFixed(2)}</span>` : '<span class="price-no">—</span>';
+  document.getElementById('totFee').innerHTML = totFee > 0 ? `<span style="color:var(--muted);font-weight:700">$${totFee.toFixed(2)}</span>` : '<span class="price-no">—</span>';
   document.getElementById('totNM').innerHTML = fmt(totNM);
   document.getElementById('totUG').innerHTML = fmt(totUG);
   document.getElementById('totP8').innerHTML = fmt(totP8);
   document.getElementById('totP9').innerHTML = fmt(totP9);
   document.getElementById('totP10').innerHTML = fmt(totP10);
   document.getElementById('totalsRow').style.display = (hasAny||totPaid>0) ? '' : 'none';
+  // Best case profit:
+  // (total PSA 9 column * 2/3) + (total PSA 10 column * 1/4) - (totalPaid + totalFee)
+  const pricedCards = cards.filter(c => { const p=cache[ckey(c)]; return p&&p!=='nf'&&p!=='loading'; });
+  const p9vals = pricedCards.map(c=>cache[ckey(c)].p9).filter(v=>v!=null);
+  const p10vals = pricedCards.map(c=>cache[ckey(c)].p10).filter(v=>v!=null);
+  const totalP9 = p9vals.reduce((a,b)=>a+b,0);
+  const totalP10 = p10vals.reduce((a,b)=>a+b,0);
+  const totalCost = totPaid + totFee;
+  const bcp = (totalP9 * (2/3)) + (totalP10 * (1/4)) - totalCost;
+  const bcpEl = document.getElementById('sBCP');
+  if(p9vals.length > 0 || p10vals.length > 0){
+    bcpEl.textContent = (bcp >= 0 ? '+' : '') + '$' + bcp.toFixed(2);
+    bcpEl.style.color = bcp >= 0 ? 'var(--success)' : 'var(--danger)';
+  } else {
+    bcpEl.textContent = '—';
+    bcpEl.style.color = 'var(--success)';
+  }
 }
 
 function updateStats(){
@@ -285,7 +314,9 @@ async function fetchJustTCG(card){
     const nm = v.find(x=>x.condition==='Near Mint'&&x.printing==='Normal')
       || v.find(x=>x.condition==='Near Mint')
       || v[0];
-    return nm?.price||null;
+    const p = nm?.price||null;
+    // JustTCG free tier returns prices in cents
+    return p != null ? (p > 500 ? p / 100 : p) : null;
   } catch(e){ return null; }
 }
 
@@ -303,7 +334,8 @@ async function fetchPoketrace(card){
       const rn = (r.name||'').toLowerCase();
       if(rn===nl||rn.includes(nl)||nl.includes(rn)){ best=r; break; }
     }
-    return best?.prices?.tcgplayer?.NEAR_MINT?.avg||null;
+    const rawPrice = best?.prices?.tcgplayer?.NEAR_MINT?.avg||null;
+    return rawPrice != null ? rawPrice / 100 : null;
   } catch(e){ return null; }
 }
 
@@ -394,12 +426,12 @@ async function priceAll(){
 }
 
 function exportCSV(){
-  const rows=[['Lot','#','Card','Set','Language','Paid','TCGPlayer NM','Ungraded','PSA 8','PSA 9','PSA 10']];
+  const rows=[['Lot','#','Card','Set','Language','Paid','Grade Fee','TCGPlayer NM','Ungraded','PSA 8','PSA 9','PSA 10']];
   lotNames.forEach(lot => {
     LOTS[lot].forEach((c,i) => {
       const p = cache[ckey(c)];
       const g = v => (p&&p!=='nf'&&p!=='loading'&&v!=null) ? Number(v).toFixed(2) : '';
-      rows.push([lot, i+1, c.n, c.s, c.l, c.paid||'',
+      rows.push([lot, i+1, c.n, c.s, c.l, c.paid||'', c.fee||'',
         p&&p!=='nf'&&p!=='loading'?g(p.nm):'',
         p&&p!=='nf'&&p!=='loading'?g(p.ug):'',
         p&&p!=='nf'&&p!=='loading'?g(p.p8):'',
@@ -412,6 +444,31 @@ function exportCSV(){
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
   a.download = 'pokemon_collection_prices.csv';
+  a.click();
+}
+
+function exportAllCSV(){
+  const savedLot = cur;
+  const rows=[['Lot','#','Card','Set','Language','Paid','Grade Fee','TCGPlayer NM','Ungraded','PSA 8','PSA 9','PSA 10']];
+  lotNames.forEach(lot => {
+    LOTS[lot].forEach((c,i) => {
+      const p = cache[ckey(c)];
+      const g = v => (p&&p!=='nf'&&p!=='loading'&&v!=null) ? Number(v).toFixed(2) : '';
+      rows.push([lot, i+1, c.n, c.s, c.l, c.paid||'', c.fee||'',
+        p&&p!=='nf'&&p!=='loading'?g(p.nm):'',
+        p&&p!=='nf'&&p!=='loading'?g(p.ug):'',
+        p&&p!=='nf'&&p!=='loading'?g(p.p8):'',
+        p&&p!=='nf'&&p!=='loading'?g(p.p9):'',
+        p&&p!=='nf'&&p!=='loading'?g(p.p10):''
+      ]);
+    });
+    // blank row between lots
+    rows.push([]);
+  });
+  const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = 'pokemon_all_lots_prices.csv';
   a.click();
 }
 
