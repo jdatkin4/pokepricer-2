@@ -88,6 +88,7 @@
     .stats-row { grid-template-columns: repeat(2,1fr); }
   }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -106,6 +107,10 @@
 
   <div class="main">
     <div class="toolbar">
+      <label class="btn" style="cursor:pointer;background:var(--accent2);border-color:var(--accent2);color:#000;font-weight:600" title="Upload your Excel inventory file">
+        &#8679; Upload .xlsx
+        <input type="file" accept=".xlsx,.xls" onchange="handleUpload(event)" style="display:none">
+      </label>
       <button class="btn btn-primary" id="priceBtn" onclick="priceLot()">&#8595; Price this lot</button>
       <button class="btn" id="allBtn" onclick="priceAll()">&#9635; Price all lots</button>
       <button class="btn" onclick="exportCSV()">&#8593; Export lot CSV</button>
@@ -474,6 +479,68 @@ function exportAllCSV(){
 
 buildSidebar();
 render();
+
+// --- Excel Upload ---
+function handleUpload(event){
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try {
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      let imported = 0;
+      wb.SheetNames.forEach(sheetName => {
+        const ws = wb.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+        if(!rows.length) return;
+        // Find header row (row 0)
+        const headers = (rows[0]||[]).map(h => (h||'').toString().toLowerCase().trim());
+        const nameIdx  = headers.findIndex(h => h.includes('card name') || h === 'name');
+        const langIdx  = headers.findIndex(h => h.includes('language') || h === 'lang');
+        const setIdx   = headers.findIndex(h => h === 'set' || h.includes('set name'));
+        const paidIdx  = headers.findIndex(h => h === 'paid' || h.includes('paid'));
+        const feeIdx   = headers.findIndex(h => h.includes('grade fee') || h.includes('grading fee'));
+        if(nameIdx === -1) return; // skip sheets without card name column
+        const cards = [];
+        for(let i = 1; i < rows.length; i++){
+          const row = rows[i];
+          if(!row) continue;
+          const name = row[nameIdx];
+          if(!name || typeof name !== 'string' || name.trim() === '') continue;
+          const paid = parseFloat(row[paidIdx]) || 0;
+          const fee  = parseFloat(row[feeIdx])  || 0;
+          const lang = row[langIdx] || 'English';
+          const set  = row[setIdx]  || '';
+          cards.push({ n: name.trim(), s: set.toString().trim(), l: lang.toString().trim(), paid, fee });
+        }
+        if(cards.length > 0){
+          LOTS[sheetName] = cards;
+          imported++;
+        }
+      });
+      if(imported > 0){
+        // Clear cache for re-imported lots
+        cache = {};
+        // Refresh lot list
+        const newLotNames = Object.keys(LOTS);
+        lotNames.length = 0;
+        newLotNames.forEach(n => lotNames.push(n));
+        cur = lotNames[0];
+        document.getElementById('sLots').textContent = lotNames.length;
+        buildSidebar();
+        render();
+        document.getElementById('statusTxt').textContent = `✓ Loaded ${imported} lots from ${file.name}`;
+      } else {
+        document.getElementById('statusTxt').textContent = '✗ No valid card data found in file';
+      }
+    } catch(err) {
+      document.getElementById('statusTxt').textContent = '✗ Error reading file: ' + err.message;
+    }
+    // Reset file input so same file can be re-uploaded
+    event.target.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
 </script>
 </body>
 </html>
