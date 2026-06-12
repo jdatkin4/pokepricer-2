@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PokePricer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --text: #e8eaf6;
+    --muted: #7b82a8;
+    --accent: #6c63ff;
+    --accent2: #00d4aa;
+    --success: #4caf7d;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+    --en: #3b82f6;
+    --jp: #f59e0b;
+  }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 14px; min-height: 100vh; }
+
+  header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 16px 24px; display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 20px; font-weight: 700; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  header p { font-size: 12px; color: var(--muted); }
+
+  .layout { display: flex; height: calc(100vh - 57px); }
+
+  .sidebar { width: 220px; min-width: 220px; background: var(--surface); border-right: 1px solid var(--border); overflow-y: auto; padding: 12px 8px; }
+  .sidebar h2 { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding: 4px 8px 8px; }
+  .lot-btn { width: 100%; text-align: left; background: none; border: none; color: var(--muted); font-size: 12px; padding: 7px 10px; border-radius: 6px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .lot-btn:hover { background: var(--surface2); color: var(--text); }
+  .lot-btn.active { background: var(--accent); color: #fff; }
+  .lot-badge { font-size: 10px; background: rgba(255,255,255,0.15); padding: 1px 5px; border-radius: 10px; flex-shrink: 0; }
+  .lot-btn.active .lot-badge { background: rgba(255,255,255,0.25); }
+
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .toolbar { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; background: var(--surface); }
+  .btn { padding: 7px 14px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 12px; cursor: pointer; font-weight: 500; transition: all 0.15s; }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #5a52e8; border-color: #5a52e8; color: #fff; }
+  .status-text { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  .prog-wrap { height: 3px; background: var(--surface2); }
+  .prog-bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); width: 0%; transition: width 0.2s; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border-bottom: 1px solid var(--border); }
+  .stat { background: var(--surface); padding: 10px 16px; }
+  .stat-label { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+  .stat-val { font-size: 18px; font-weight: 700; color: var(--text); }
+
+  .search-wrap { padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .search-wrap input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 7px; padding: 7px 12px; color: var(--text); font-size: 13px; }
+  .search-wrap input::placeholder { color: var(--muted); }
+  .search-wrap input:focus { outline: none; border-color: var(--accent); }
+
+  .table-wrap { flex: 1; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { background: var(--surface); position: sticky; top: 0; padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); white-space: nowrap; z-index: 1; }
+  thead th .src { display: block; font-size: 9px; font-weight: 400; color: var(--accent2); text-transform: none; letter-spacing: 0; }
+  tbody tr { border-bottom: 1px solid var(--border); }
+  tbody tr:hover { background: var(--surface2); }
+  td { padding: 7px 12px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 160px; }
+  td.card-name { font-weight: 600; color: var(--text); }
+  td.set-name { color: var(--muted); font-size: 11px; }
+  td.price-cell { font-variant-numeric: tabular-nums; }
+  .price-ok { color: var(--success); font-weight: 600; }
+  .price-no { color: var(--border); }
+  .price-ld { color: var(--muted); font-style: italic; }
+  .badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600; }
+  .b-en { background: rgba(59,130,246,0.2); color: var(--en); }
+  .b-jp { background: rgba(245,158,11,0.2); color: var(--jp); }
+  .b-ot { background: var(--surface2); color: var(--muted); }
+  .refresh-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  .refresh-btn:hover { color: var(--accent); background: var(--surface2); }
+
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty h3 { font-size: 16px; margin-bottom: 8px; color: var(--text); }
+
+  @media (max-width: 700px) {
+    .sidebar { display: none; }
+    .stats-row { grid-template-columns: repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>PokePricer</h1>
+    <p>NM Raw via JustTCG &nbsp;·&nbsp; PSA 8 / 9 / 10 via PriceCharting</p>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar">
+    <h2>Lots</h2>
+    <div id="lotList"></div>
+  </aside>
+
+  <div class="main">
+    <div class="toolbar">
+      <button class="btn btn-primary" id="priceBtn" onclick="priceLot()">&#8595; Price this lot</button>
+      <button class="btn" id="allBtn" onclick="priceAll()">&#9635; Price all lots</button>
+      <button class="btn" onclick="exportCSV()">&#8593; Export CSV</button>
+      <span class="status-text" id="statusTxt">Select a lot and click "Price this lot"</span>
+    </div>
+    <div class="prog-wrap"><div class="prog-bar" id="progBar"></div></div>
+
+    <div class="stats-row">
+      <div class="stat"><div class="stat-label">Cards priced</div><div class="stat-val" id="sPriced">0</div></div>
+      <div class="stat"><div class="stat-label">Total lots</div><div class="stat-val" id="sLots">24</div></div>
+      <div class="stat"><div class="stat-label">Avg NM raw</div><div class="stat-val" id="sAvg">—</div></div>
+      <div class="stat"><div class="stat-label">Highest PSA 10</div><div class="stat-val" id="sHigh">—</div></div>
+    </div>
+
+    <div class="search-wrap">
+      <input type="text" id="searchEl" placeholder="Search cards in this lot…" oninput="render()">
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Card</th>
+            <th>Set</th>
+            <th>Lang</th>
+            <th>Paid</th>
+            <th>NM Raw<span class="src">JustTCG</span></th>
+            <th>PSA 8<span class="src">PriceCharting</span></th>
+            <th>PSA 9<span class="src">PriceCharting</span></th>
+            <th>PSA 10<span class="src">PriceCharting</span></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tbodyEl"></tbody>
+      </table>
+      <div class="empty" id="emptyEl" style="display:none">
+        <h3>No cards found</h3>
+        <p>Try a different search term</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="lots.js"></script>
+<script>
+const lotNames = Object.keys(LOTS);
+let cur = lotNames[0];
+let cache = {};
+let busy = false;
+
+function ckey(c){ return (c.n+'|'+c.s+'|'+c.l).toLowerCase(); }
+
+function buildSidebar(){
+  const el = document.getElementById('lotList');
+  el.innerHTML = '';
+  lotNames.forEach(name => {
+    const btn = document.createElement('button');
+    btn.className = 'lot-btn' + (name === cur ? ' active' : '');
+    const priced = LOTS[name].filter(c => { const p = cache[ckey(c)]; return p && p !== 'nf' && p !== 'loading'; }).length;
+    btn.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis">${name}</span><span class="lot-badge">${priced}/${LOTS[name].length}</span>`;
+    btn.title = name;
+    btn.onclick = () => { cur = name; buildSidebar(); document.getElementById('searchEl').value = ''; render(); };
+    el.appendChild(btn);
+  });
+}
+
+function lb(l){
+  const c = l==='English'?'b-en':l==='Japanese'?'b-jp':'b-ot';
+  const t = l==='English'?'EN':l==='Japanese'?'JP':l.slice(0,2).toUpperCase();
+  return `<span class="badge ${c}">${t}</span>`;
+}
+function pf(v){ return v!=null ? `<span class="price-ok">$${Number(v).toFixed(2)}</span>` : `<span class="price-no">—</span>`; }
+
+function render(){
+  const q = document.getElementById('searchEl').value.toLowerCase();
+  const tb = document.getElementById('tbodyEl');
+  const empty = document.getElementById('emptyEl');
+  tb.innerHTML = '';
+  let count = 0;
+  LOTS[cur].forEach((card, i) => {
+    if(q && !card.n.toLowerCase().includes(q) && !card.s.toLowerCase().includes(q)) return;
+    count++;
+    const p = cache[ckey(card)];
+    let nm, p8, p9, p10;
+    if(!p){ nm=p8=p9=p10='<span class="price-no">—</span>'; }
+    else if(p==='loading'){ nm=p8=p9=p10='<span class="price-ld">…</span>'; }
+    else if(p==='nf'){ nm=p8=p9=p10='<span class="price-no">n/f</span>'; }
+    else { nm=pf(p.nm); p8=pf(p.p8); p9=pf(p.p9); p10=pf(p.p10); }
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="color:var(--muted);width:36px">${i+1}</td>
+      <td class="card-name" title="${card.n}">${card.n}</td>
+      <td class="set-name" title="${card.s}">${card.s}</td>
+      <td>${lb(card.l)}</td>
+      <td style="color:var(--muted)">${card.paid ? '$'+card.paid : '—'}</td>
+      <td class="price-cell">${nm}</td>
+      <td class="price-cell">${p8}</td>
+      <td class="price-cell">${p9}</td>
+      <td class="price-cell">${p10}</td>
+      <td><button class="refresh-btn" onclick="fetchOne(${i})" title="Refresh">&#8635;</button></td>`;
+    tb.appendChild(tr);
+  });
+  empty.style.display = count === 0 ? 'block' : 'none';
+  updateStats();
+}
+
+function updateStats(){
+  let priced=0, nmSum=0, nmCount=0, p10High=0;
+  Object.values(cache).forEach(p => {
+    if(!p||p==='loading'||p==='nf') return;
+    priced++;
+    if(p.nm!=null){ nmSum+=p.nm; nmCount++; }
+    if(p.p10!=null&&p.p10>p10High) p10High=p.p10;
+  });
+  document.getElementById('sPriced').textContent = priced;
+  document.getElementById('sAvg').textContent = nmCount ? '$'+(nmSum/nmCount).toFixed(2) : '—';
+  document.getElementById('sHigh').textContent = p10High ? '$'+p10High.toFixed(2) : '—';
+  buildSidebar();
+}
+
+async function fetchJTCG(card){
+  const game = card.l==='Japanese' ? 'pokemon-japan' : 'pokemon';
+  try {
+    const res = await fetch(`/api/justtcg?game=${game}&q=${encodeURIComponent(card.n)}`);
+    if(!res.ok) return null;
+    const data = await res.json();
+    if(!data.data||!data.data.length) return null;
+    const nl = card.n.toLowerCase();
+    let best = data.data[0];
+    for(const c of data.data){ if(c.name.toLowerCase().includes(nl)||nl.includes(c.name.toLowerCase())){ best=c; break; } }
+    const v = best.variants||[];
+    const nm = v.find(x=>x.condition==='Near Mint'&&x.printing==='Normal') || v.find(x=>x.condition==='Near Mint') || v[0];
+    return nm ? nm.price : null;
+  } catch(e){ return null; }
+}
+
+async function fetchPC(card){
+  const q = `${card.n} ${card.s} pokemon card`;
+  try {
+    const res = await fetch(`/api/pricecharting?q=${encodeURIComponent(q)}`);
+    if(!res.ok) return null;
+    const data = await res.json();
+    const products = data.products||[];
+    if(!products.length) return null;
+    const nl = card.n.toLowerCase();
+    let best = products[0];
+    for(const p of products){ if(p['product-name']&&p['product-name'].toLowerCase().includes(nl)){ best=p; break; } }
+    if(!best.id) return null;
+    const res2 = await fetch(`/api/pricecharting?id=${best.id}`);
+    if(!res2.ok) return null;
+    const d = await res2.json();
+    return {
+      p8:  d['new-price']          ? d['new-price']/100          : null,
+      p9:  d['graded-price']       ? d['graded-price']/100       : null,
+      p10: d['manual-only-price']  ? d['manual-only-price']/100  : null
+    };
+  } catch(e){ return null; }
+}
+
+async function fetchCard(card){
+  const [nm, pc] = await Promise.all([fetchJTCG(card), fetchPC(card)]);
+  if(nm==null && pc==null) return 'nf';
+  return { nm, p8: pc?pc.p8:null, p9: pc?pc.p9:null, p10: pc?pc.p10:null };
+}
+
+async function fetchOne(idx){
+  const card = LOTS[cur][idx];
+  const k = ckey(card);
+  cache[k] = 'loading'; render();
+  cache[k] = await fetchCard(card); render();
+}
+
+async function priceLot(){
+  if(busy) return;
+  busy = true;
+  document.getElementById('priceBtn').disabled = true;
+  document.getElementById('allBtn').disabled = true;
+  const cards = LOTS[cur];
+  const pb = document.getElementById('progBar');
+  pb.style.width = '0%';
+  for(let i=0; i<cards.length; i++){
+    const k = ckey(cards[i]);
+    if(cache[k] && cache[k]!=='nf'){ pb.style.width=Math.round((i+1)/cards.length*100)+'%'; continue; }
+    document.getElementById('statusTxt').textContent = `Pricing ${i+1}/${cards.length}: ${cards[i].n}…`;
+    cache[k] = 'loading'; render();
+    cache[k] = await fetchCard(cards[i]); render();
+    pb.style.width = Math.round((i+1)/cards.length*100)+'%';
+    await new Promise(r=>setTimeout(r,300));
+  }
+  document.getElementById('statusTxt').textContent = `Done — ${cards.length} cards priced`;
+  pb.style.width = '0%';
+  busy = false;
+  document.getElementById('priceBtn').disabled = false;
+  document.getElementById('allBtn').disabled = false;
+}
+
+async function priceAll(){
+  if(busy) return;
+  for(const lot of lotNames){
+    cur = lot; buildSidebar(); render();
+    await new Promise(r=>setTimeout(r,50));
+    await priceLot();
+  }
+}
+
+function exportCSV(){
+  const rows=[['Lot','#','Card','Set','Language','Paid','NM Raw','PSA 8','PSA 9','PSA 10']];
+  lotNames.forEach(lot => {
+    LOTS[lot].forEach((c,i) => {
+      const p = cache[ckey(c)];
+      const g = v => (p&&p!=='nf'&&p!=='loading'&&v!=null) ? Number(v).toFixed(2) : '';
+      rows.push([lot, i+1, c.n, c.s, c.l, c.paid||'',
+        p&&p!=='nf'&&p!=='loading'?g(p.nm):'',
+        p&&p!=='nf'&&p!=='loading'?g(p.p8):'',
+        p&&p!=='nf'&&p!=='loading'?g(p.p9):'',
+        p&&p!=='nf'&&p!=='loading'?g(p.p10):''
+      ]);
+    });
+  });
+  const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = 'pokemon_collection_prices.csv';
+  a.click();
+}
+
+buildSidebar();
+render();
+</script>
+</body>
+</html>
