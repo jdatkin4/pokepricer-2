@@ -244,7 +244,8 @@ async function fetchJTCG(card){
 }
 
 async function fetchPC(card){
-  const q = `${card.n} ${card.s} pokemon card`;
+  const isJP = card.l === 'Japanese';
+  const q = isJP ? `${card.n} ${card.s} japanese pokemon` : `${card.n} ${card.s} pokemon`;
   try {
     const res = await fetch(`/api/pricecharting?q=${encodeURIComponent(q)}`);
     if(!res.ok) return null;
@@ -252,8 +253,15 @@ async function fetchPC(card){
     const products = data.products||[];
     if(!products.length) return null;
     const nl = card.n.toLowerCase();
-    let best = products[0];
-    for(const p of products){ if(p['product-name']&&p['product-name'].toLowerCase().includes(nl)){ best=p; break; } }
+    const filtered = products.filter(p => {
+      const name = (p['product-name']||'').toLowerCase();
+      const consoleName = (p['console-name']||'').toLowerCase();
+      const isJPResult = name.includes('japanese') || consoleName.includes('japanese');
+      return isJP ? isJPResult : !isJPResult;
+    });
+    const pool = filtered.length ? filtered : products;
+    let best = pool[0];
+    for(const p of pool){ if(p['product-name']&&p['product-name'].toLowerCase().includes(nl)){ best=p; break; } }
     if(!best.id) return null;
     const res2 = await fetch(`/api/pricecharting?id=${best.id}`);
     if(!res2.ok) return null;
