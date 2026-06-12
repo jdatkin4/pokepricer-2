@@ -105,7 +105,8 @@
   <aside class="sidebar">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px 8px">
       <h2 style="margin:0">Lots</h2>
-      <button id="refreshBtn" onclick="refreshFromFile()" title="Re-read uploaded file" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:2px 6px;border-radius:4px;opacity:0.5" disabled>&#8635; Refresh</button>
+<button id="refreshBtn" onclick="refreshFromFile()" title="Re-read uploaded file" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:2px 6px;border-radius:4px;opacity:0.5" disabled>&#8635; Refresh</button>
+      <button onclick="deleteAllLots()" title="Delete all lots" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:2px 6px;border-radius:4px;">&#128465; Clear all</button>
     </div>
     <div id="lotList"></div>
   </aside>
@@ -186,6 +187,19 @@ let busy = false;
 function ckey(c){ return (c.n+'|'+c.s+'|'+c.l).toLowerCase(); }
 
 let lastUploadedFile = null;
+
+function deleteAllLots(){
+  if(!confirm('Delete ALL lots? This cannot be undone.')) return;
+  lotNames.forEach(n => delete LOTS[n]);
+  lotNames.length = 0;
+  cache = {};
+  cur = '';
+  document.getElementById('sLots').textContent = 0;
+  document.getElementById('tbodyEl').innerHTML = '';
+  document.getElementById('totalsRow').style.display = 'none';
+  document.getElementById('statusTxt').textContent = 'All lots cleared — upload a new file to begin';
+  buildSidebar();
+}
 
 function deleteLot(name){
   if(!confirm('Delete lot "' + name + '"?')) return;
