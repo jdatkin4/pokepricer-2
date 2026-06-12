@@ -94,7 +94,7 @@
 <header>
   <div>
     <h1>PokePricer</h1>
-    <p>TCGPlayer NM via PokeWallet &nbsp;·&nbsp; Ungraded + PSA 8 / 9 / 10 via PriceCharting</p>
+    <p>TCGPlayer NM via JustTCG + Poketrace &nbsp;·&nbsp; Ungraded + PSA 8 / 9 / 10 via PriceCharting</p>
   </div>
 </header>
 
@@ -265,47 +265,54 @@ function updateStats(){
   buildSidebar();
 }
 
-async function fetchPW(card){
-  // PokeWallet: TCGPlayer Near Mint market price
-  const q = card.l === 'Japanese'
-    ? `${card.n} japanese`
-    : `${card.n} ${card.s}`;
+// --- TCGPlayer NM fetch with 3-source fallback ---
+
+async function fetchJustTCG(card){
+  const game = card.l==='Japanese' ? 'pokemon-japan' : 'pokemon';
+  const q = `${card.n} ${card.s}`;
   try {
-    const res = await fetch(`/api/pokewallet?q=${encodeURIComponent(q)}`);
+    const res = await fetch(`/api/justtcg?game=${game}&q=${encodeURIComponent(q)}&condition=NM`);
     if(!res.ok) return null;
     const data = await res.json();
-    if(data.error) return null;
-    const results = data.results||[];
-    if(!results.length) {
-      // fallback: search by name only
-      const res2 = await fetch(`/api/pokewallet?q=${encodeURIComponent(card.n)}`);
-      if(!res2.ok) return null;
-      const data2 = await res2.json();
-      if(data2.error||!data2.results?.length) return null;
-      results.push(...data2.results);
-    }
+    if(!data.data||!data.data.length) return null;
     const nl = card.n.toLowerCase();
-    // Score results by name match quality
-    let best = null, bestScore = -1;
-    for(const r of results){
-      const rn = (r.card_info?.name||'').toLowerCase();
-      let score = 0;
-      if(rn === nl) score = 3;
-      else if(rn.startsWith(nl)||nl.startsWith(rn)) score = 2;
-      else if(rn.includes(nl)||nl.includes(rn)) score = 1;
-      // prefer cards with tcgplayer data
-      if(r.tcgplayer?.prices?.length) score += 0.5;
-      if(score > bestScore){ bestScore=score; best=r; }
+    let best = data.data[0];
+    for(const c of data.data){
+      const cn = (c.name||'').toLowerCase();
+      if(cn===nl||cn.includes(nl)||nl.includes(cn)){ best=c; break; }
     }
-    if(!best) best = results[0];
-    // Get Normal or Holofoil or first TCGPlayer price
-    const prices = best?.tcgplayer?.prices||[];
-    if(!prices.length) return null;
-    const nm = prices.find(p=>p.sub_type_name==='Normal')
-      || prices.find(p=>p.sub_type_name==='Holofoil')
-      || prices[0];
-    return nm?.market_price||nm?.mid_price||null;
+    const v = best.variants||[];
+    const nm = v.find(x=>x.condition==='Near Mint'&&x.printing==='Normal')
+      || v.find(x=>x.condition==='Near Mint')
+      || v[0];
+    return nm?.price||null;
   } catch(e){ return null; }
+}
+
+async function fetchPoketrace(card){
+  const q = card.l==='Japanese' ? `${card.n} japanese` : `${card.n} ${card.s}`;
+  try {
+    const res = await fetch(`/api/poketrace?q=${encodeURIComponent(q)}`);
+    if(!res.ok) return null;
+    const data = await res.json();
+    const results = data.data||[];
+    if(!results.length) return null;
+    const nl = card.n.toLowerCase();
+    let best = results[0];
+    for(const r of results){
+      const rn = (r.name||'').toLowerCase();
+      if(rn===nl||rn.includes(nl)||nl.includes(rn)){ best=r; break; }
+    }
+    return best?.prices?.tcgplayer?.NEAR_MINT?.avg||null;
+  } catch(e){ return null; }
+}
+
+async function fetchTCGNM(card){
+  // Try JustTCG first, then Poketrace as fallback
+  let price = await fetchJustTCG(card);
+  if(price != null) return price;
+  price = await fetchPoketrace(card);
+  return price;
 }
 
 async function fetchPC(card){
@@ -341,7 +348,7 @@ async function fetchPC(card){
 }
 
 async function fetchCard(card){
-  const [nm, pc] = await Promise.all([fetchPW(card), fetchPC(card)]);
+  const [nm, pc] = await Promise.all([fetchTCGNM(card), fetchPC(card)]);
   if(nm==null && pc==null) return 'nf';
   return { nm, ug: pc?pc.ug:null, p8: pc?pc.p8:null, p9: pc?pc.p9:null, p10: pc?pc.p10:null };
 }
