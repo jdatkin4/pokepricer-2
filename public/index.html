@@ -143,7 +143,8 @@
         <tbody id="tbodyEl"></tbody>
       <tfoot id="totalsRow" style="display:none">
         <tr style="border-top:2px solid var(--border);font-weight:700">
-          <td colspan="5" style="padding:8px 12px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.05em">Lot Totals</td>
+          <td colspan="4" style="padding:8px 12px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.05em">Lot Totals</td>
+          <td class="price-cell" id="totPaid" style="padding:8px 12px"></td>
           <td class="price-cell" id="totNM" style="padding:8px 12px"></td>
           <td class="price-cell" id="totUG" style="padding:8px 12px"></td>
           <td class="price-cell" id="totP8" style="padding:8px 12px"></td>
@@ -228,8 +229,10 @@ function render(){
 
 function updateTotals(){
   const cards = LOTS[cur];
-  let totNM=0, totUG=0, totP8=0, totP9=0, totP10=0;
+  let totPaid=0, totNM=0, totUG=0, totP8=0, totP9=0, totP10=0;
   let hasAny=false;
+  // Always sum paid regardless of pricing status
+  cards.forEach(card => { totPaid += (card.paid||0); });
   cards.forEach(card => {
     const p = cache[ckey(card)];
     if(!p||p==='loading'||p==='nf') return;
@@ -241,12 +244,13 @@ function updateTotals(){
     if(p.p10!=null) totP10+=p.p10;
   });
   const fmt = v => v > 0 ? `<span class="price-ok">$${v.toFixed(2)}</span>` : '<span class="price-no">—</span>';
+  document.getElementById('totPaid').innerHTML = totPaid > 0 ? `<span style="color:var(--muted);font-weight:700">$${totPaid.toFixed(2)}</span>` : '<span class="price-no">—</span>';
   document.getElementById('totNM').innerHTML = fmt(totNM);
   document.getElementById('totUG').innerHTML = fmt(totUG);
   document.getElementById('totP8').innerHTML = fmt(totP8);
   document.getElementById('totP9').innerHTML = fmt(totP9);
   document.getElementById('totP10').innerHTML = fmt(totP10);
-  document.getElementById('totalsRow').style.display = hasAny ? '' : 'none';
+  document.getElementById('totalsRow').style.display = (hasAny||totPaid>0) ? '' : 'none';
 }
 
 function updateStats(){
@@ -270,17 +274,36 @@ async function fetchPW(card){
     const res = await fetch(`/api/pokewallet?q=${encodeURIComponent(q)}`);
     if(!res.ok) return null;
     const data = await res.json();
+    if(data.error) return null;
     const results = data.results||[];
-    if(!results.length) return null;
+    if(!results.length) {
+      // fallback: search by name only
+      const res2 = await fetch(`/api/pokewallet?q=${encodeURIComponent(card.n)}`);
+      if(!res2.ok) return null;
+      const data2 = await res2.json();
+      if(data2.error||!data2.results?.length) return null;
+      results.push(...data2.results);
+    }
     const nl = card.n.toLowerCase();
-    let best = results[0];
+    // Score results by name match quality
+    let best = null, bestScore = -1;
     for(const r of results){
       const rn = (r.card_info?.name||'').toLowerCase();
-      if(rn.includes(nl)||nl.includes(rn)){ best=r; break; }
+      let score = 0;
+      if(rn === nl) score = 3;
+      else if(rn.startsWith(nl)||nl.startsWith(rn)) score = 2;
+      else if(rn.includes(nl)||nl.includes(rn)) score = 1;
+      // prefer cards with tcgplayer data
+      if(r.tcgplayer?.prices?.length) score += 0.5;
+      if(score > bestScore){ bestScore=score; best=r; }
     }
-    // Get Normal or first TCGPlayer price
-    const prices = best.tcgplayer?.prices||[];
-    const nm = prices.find(p=>p.sub_type_name==='Normal')||prices[0];
+    if(!best) best = results[0];
+    // Get Normal or Holofoil or first TCGPlayer price
+    const prices = best?.tcgplayer?.prices||[];
+    if(!prices.length) return null;
+    const nm = prices.find(p=>p.sub_type_name==='Normal')
+      || prices.find(p=>p.sub_type_name==='Holofoil')
+      || prices[0];
     return nm?.market_price||nm?.mid_price||null;
   } catch(e){ return null; }
 }
