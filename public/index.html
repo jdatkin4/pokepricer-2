@@ -35,6 +35,8 @@
   .lot-btn:hover { background: var(--surface2); color: var(--text); }
   .lot-btn.active { background: var(--accent); color: #fff; }
   .lot-badge { font-size: 10px; background: rgba(255,255,255,0.15); padding: 1px 5px; border-radius: 10px; flex-shrink: 0; }
+  .del-lot { font-size: 11px; color: rgba(255,255,255,0.3); padding: 0 3px; flex-shrink:0; line-height:1; cursor:pointer; }
+  .del-lot:hover { color: #ef4444 !important; }
   .lot-btn.active .lot-badge { background: rgba(255,255,255,0.25); }
 
   .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -101,7 +103,10 @@
 
 <div class="layout">
   <aside class="sidebar">
-    <h2>Lots</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 8px 8px">
+      <h2 style="margin:0">Lots</h2>
+      <button id="refreshBtn" onclick="refreshFromFile()" title="Re-read uploaded file" style="background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:2px 6px;border-radius:4px;opacity:0.5" disabled>&#8635; Refresh</button>
+    </div>
     <div id="lotList"></div>
   </aside>
 
@@ -180,6 +185,28 @@ let busy = false;
 
 function ckey(c){ return (c.n+'|'+c.s+'|'+c.l).toLowerCase(); }
 
+let lastUploadedFile = null;
+
+function deleteLot(name){
+  if(!confirm('Delete lot "' + name + '"?')) return;
+  delete LOTS[name];
+  const idx = lotNames.indexOf(name);
+  if(idx > -1) lotNames.splice(idx, 1);
+  if(cur === name) cur = lotNames[0] || '';
+  document.getElementById('sLots').textContent = lotNames.length;
+  buildSidebar();
+  render();
+}
+
+function refreshFromFile(){
+  if(!lastUploadedFile){
+    document.getElementById('statusTxt').textContent = 'No file uploaded yet — use Upload first';
+    return;
+  }
+  cache = {};
+  processFile(lastUploadedFile);
+}
+
 function setFee(lot, idx, val){
   LOTS[lot][idx].fee = parseFloat(val)||0;
   updateTotals();
@@ -193,9 +220,10 @@ function buildSidebar(){
     const btn = document.createElement('button');
     btn.className = 'lot-btn' + (name === cur ? ' active' : '');
     const priced = LOTS[name].filter(c => { const p = cache[ckey(c)]; return p && p !== 'nf' && p !== 'loading'; }).length;
-    btn.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis">${name}</span><span class="lot-badge">${priced}/${LOTS[name].length}</span>`;
+    btn.innerHTML = `<span style="overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0">${name}</span><span class="lot-badge">${priced}/${LOTS[name].length}</span><span class="del-lot" title="Delete lot">✕</span>`;
     btn.title = name;
     btn.onclick = () => { cur = name; buildSidebar(); document.getElementById('searchEl').value = ''; render(); };
+    btn.querySelector('.del-lot').onclick = (e) => { e.stopPropagation(); deleteLot(name); };
     el.appendChild(btn);
   });
 }
@@ -484,6 +512,15 @@ render();
 function handleUpload(event){
   const file = event.target.files[0];
   if(!file) return;
+  lastUploadedFile = file;
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = false;
+  btn.style.opacity = '1';
+  processFile(file);
+  event.target.value = '';
+}
+
+function processFile(file){
   const reader = new FileReader();
   reader.onload = function(e){
     try {
@@ -536,8 +573,6 @@ function handleUpload(event){
     } catch(err) {
       document.getElementById('statusTxt').textContent = '✗ Error reading file: ' + err.message;
     }
-    // Reset file input so same file can be re-uploaded
-    event.target.value = '';
   };
   reader.readAsArrayBuffer(file);
 }
