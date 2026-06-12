@@ -5,6 +5,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 const JUSTTCG_KEY = process.env.JUSTTCG_KEY || 'tcg_c8c8976ae0934f569d9e521cc43d04e5';
+const PC_KEY = process.env.PRICECHARTING_KEY || 'd8dc696e2a898813eac2c38083351733441290aa';
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -37,9 +38,9 @@ app.get('/api/pricecharting', async (req, res) => {
     const { q, id } = req.query;
     let url;
     if (id) {
-      url = `https://www.pricecharting.com/api/product?id=${encodeURIComponent(id)}`;
+      url = `https://www.pricecharting.com/api/product?t=${PC_KEY}&id=${encodeURIComponent(id)}`;
     } else {
-      url = `https://www.pricecharting.com/api/products?q=${encodeURIComponent(q)}`;
+      url = `https://www.pricecharting.com/api/products?t=${PC_KEY}&q=${encodeURIComponent(q)}`;
     }
     const response = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
