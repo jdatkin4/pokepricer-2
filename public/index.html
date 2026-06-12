@@ -94,7 +94,7 @@
 <header>
   <div>
     <h1>PokePricer</h1>
-    <p>NM Raw via JustTCG &nbsp;·&nbsp; PSA 8 / 9 / 10 via PriceCharting</p>
+    <p>TCGPlayer NM via PokeWallet &nbsp;·&nbsp; Ungraded + PSA 8 / 9 / 10 via PriceCharting</p>
   </div>
 </header>
 
@@ -117,7 +117,6 @@
       <div class="stat"><div class="stat-label">Cards priced</div><div class="stat-val" id="sPriced">0</div></div>
       <div class="stat"><div class="stat-label">Total lots</div><div class="stat-val" id="sLots">24</div></div>
       <div class="stat"><div class="stat-label">Avg NM raw</div><div class="stat-val" id="sAvg">—</div></div>
-      <div class="stat"><div class="stat-label">Highest PSA 10</div><div class="stat-val" id="sHigh">—</div></div>
     </div>
 
     <div class="search-wrap">
@@ -133,7 +132,8 @@
             <th>Set</th>
             <th>Lang</th>
             <th>Paid</th>
-            <th>NM Raw<span class="src">JustTCG</span></th>
+            <th>TCGPlayer NM<span class="src">PokeWallet</span></th>
+            <th>Ungraded<span class="src">PriceCharting</span></th>
             <th>PSA 8<span class="src">PriceCharting</span></th>
             <th>PSA 9<span class="src">PriceCharting</span></th>
             <th>PSA 10<span class="src">PriceCharting</span></th>
@@ -141,6 +141,17 @@
           </tr>
         </thead>
         <tbody id="tbodyEl"></tbody>
+      <tfoot id="totalsRow" style="display:none">
+        <tr style="border-top:2px solid var(--border);font-weight:700">
+          <td colspan="5" style="padding:8px 12px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.05em">Lot Totals</td>
+          <td class="price-cell" id="totNM" style="padding:8px 12px"></td>
+          <td class="price-cell" id="totUG" style="padding:8px 12px"></td>
+          <td class="price-cell" id="totP8" style="padding:8px 12px"></td>
+          <td class="price-cell" id="totP9" style="padding:8px 12px"></td>
+          <td class="price-cell" id="totP10" style="padding:8px 12px"></td>
+          <td></td>
+        </tr>
+      </tfoot>
       </table>
       <div class="empty" id="emptyEl" style="display:none">
         <h3>No cards found</h3>
@@ -190,11 +201,11 @@ function render(){
     if(q && !card.n.toLowerCase().includes(q) && !card.s.toLowerCase().includes(q)) return;
     count++;
     const p = cache[ckey(card)];
-    let nm, p8, p9, p10;
-    if(!p){ nm=p8=p9=p10='<span class="price-no">—</span>'; }
-    else if(p==='loading'){ nm=p8=p9=p10='<span class="price-ld">…</span>'; }
-    else if(p==='nf'){ nm=p8=p9=p10='<span class="price-no">n/f</span>'; }
-    else { nm=pf(p.nm); p8=pf(p.p8); p9=pf(p.p9); p10=pf(p.p10); }
+    let nm, ug, p8, p9, p10;
+    if(!p){ nm=ug=p8=p9=p10='<span class="price-no">—</span>'; }
+    else if(p==='loading'){ nm=ug=p8=p9=p10='<span class="price-ld">…</span>'; }
+    else if(p==='nf'){ nm=ug=p8=p9=p10='<span class="price-no">n/f</span>'; }
+    else { nm=pf(p.nm); ug=pf(p.ug); p8=pf(p.p8); p9=pf(p.p9); p10=pf(p.p10); }
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td style="color:var(--muted);width:36px">${i+1}</td>
@@ -203,6 +214,7 @@ function render(){
       <td>${lb(card.l)}</td>
       <td style="color:var(--muted)">${card.paid ? '$'+card.paid : '—'}</td>
       <td class="price-cell">${nm}</td>
+      <td class="price-cell">${ug}</td>
       <td class="price-cell">${p8}</td>
       <td class="price-cell">${p9}</td>
       <td class="price-cell">${p10}</td>
@@ -210,36 +222,66 @@ function render(){
     tb.appendChild(tr);
   });
   empty.style.display = count === 0 ? 'block' : 'none';
+  updateTotals();
   updateStats();
 }
 
+function updateTotals(){
+  const cards = LOTS[cur];
+  let totNM=0, totUG=0, totP8=0, totP9=0, totP10=0;
+  let hasAny=false;
+  cards.forEach(card => {
+    const p = cache[ckey(card)];
+    if(!p||p==='loading'||p==='nf') return;
+    hasAny=true;
+    if(p.nm!=null) totNM+=p.nm;
+    if(p.ug!=null) totUG+=p.ug;
+    if(p.p8!=null) totP8+=p.p8;
+    if(p.p9!=null) totP9+=p.p9;
+    if(p.p10!=null) totP10+=p.p10;
+  });
+  const fmt = v => v > 0 ? `<span class="price-ok">$${v.toFixed(2)}</span>` : '<span class="price-no">—</span>';
+  document.getElementById('totNM').innerHTML = fmt(totNM);
+  document.getElementById('totUG').innerHTML = fmt(totUG);
+  document.getElementById('totP8').innerHTML = fmt(totP8);
+  document.getElementById('totP9').innerHTML = fmt(totP9);
+  document.getElementById('totP10').innerHTML = fmt(totP10);
+  document.getElementById('totalsRow').style.display = hasAny ? '' : 'none';
+}
+
 function updateStats(){
-  let priced=0, nmSum=0, nmCount=0, p10High=0;
+  let priced=0, nmSum=0, nmCount=0;
   Object.values(cache).forEach(p => {
     if(!p||p==='loading'||p==='nf') return;
     priced++;
     if(p.nm!=null){ nmSum+=p.nm; nmCount++; }
-    if(p.p10!=null&&p.p10>p10High) p10High=p.p10;
   });
   document.getElementById('sPriced').textContent = priced;
   document.getElementById('sAvg').textContent = nmCount ? '$'+(nmSum/nmCount).toFixed(2) : '—';
-  document.getElementById('sHigh').textContent = p10High ? '$'+p10High.toFixed(2) : '—';
   buildSidebar();
 }
 
-async function fetchJTCG(card){
-  const game = card.l==='Japanese' ? 'pokemon-japan' : 'pokemon';
+async function fetchPW(card){
+  // PokeWallet: TCGPlayer Near Mint market price
+  const q = card.l === 'Japanese'
+    ? `${card.n} japanese`
+    : `${card.n} ${card.s}`;
   try {
-    const res = await fetch(`/api/justtcg?game=${game}&q=${encodeURIComponent(card.n)}`);
+    const res = await fetch(`/api/pokewallet?q=${encodeURIComponent(q)}`);
     if(!res.ok) return null;
     const data = await res.json();
-    if(!data.data||!data.data.length) return null;
+    const results = data.results||[];
+    if(!results.length) return null;
     const nl = card.n.toLowerCase();
-    let best = data.data[0];
-    for(const c of data.data){ if(c.name.toLowerCase().includes(nl)||nl.includes(c.name.toLowerCase())){ best=c; break; } }
-    const v = best.variants||[];
-    const nm = v.find(x=>x.condition==='Near Mint'&&x.printing==='Normal') || v.find(x=>x.condition==='Near Mint') || v[0];
-    return nm ? nm.price : null;
+    let best = results[0];
+    for(const r of results){
+      const rn = (r.card_info?.name||'').toLowerCase();
+      if(rn.includes(nl)||nl.includes(rn)){ best=r; break; }
+    }
+    // Get Normal or first TCGPlayer price
+    const prices = best.tcgplayer?.prices||[];
+    const nm = prices.find(p=>p.sub_type_name==='Normal')||prices[0];
+    return nm?.market_price||nm?.mid_price||null;
   } catch(e){ return null; }
 }
 
@@ -267,6 +309,7 @@ async function fetchPC(card){
     if(!res2.ok) return null;
     const d = await res2.json();
     return {
+      ug:  d['loose-price']        ? d['loose-price']/100        : null,
       p8:  d['new-price']          ? d['new-price']/100          : null,
       p9:  d['graded-price']       ? d['graded-price']/100       : null,
       p10: d['manual-only-price']  ? d['manual-only-price']/100  : null
@@ -275,9 +318,9 @@ async function fetchPC(card){
 }
 
 async function fetchCard(card){
-  const [nm, pc] = await Promise.all([fetchJTCG(card), fetchPC(card)]);
+  const [nm, pc] = await Promise.all([fetchPW(card), fetchPC(card)]);
   if(nm==null && pc==null) return 'nf';
-  return { nm, p8: pc?pc.p8:null, p9: pc?pc.p9:null, p10: pc?pc.p10:null };
+  return { nm, ug: pc?pc.ug:null, p8: pc?pc.p8:null, p9: pc?pc.p9:null, p10: pc?pc.p10:null };
 }
 
 async function fetchOne(idx){
@@ -321,13 +364,14 @@ async function priceAll(){
 }
 
 function exportCSV(){
-  const rows=[['Lot','#','Card','Set','Language','Paid','NM Raw','PSA 8','PSA 9','PSA 10']];
+  const rows=[['Lot','#','Card','Set','Language','Paid','TCGPlayer NM','Ungraded','PSA 8','PSA 9','PSA 10']];
   lotNames.forEach(lot => {
     LOTS[lot].forEach((c,i) => {
       const p = cache[ckey(c)];
       const g = v => (p&&p!=='nf'&&p!=='loading'&&v!=null) ? Number(v).toFixed(2) : '';
       rows.push([lot, i+1, c.n, c.s, c.l, c.paid||'',
         p&&p!=='nf'&&p!=='loading'?g(p.nm):'',
+        p&&p!=='nf'&&p!=='loading'?g(p.ug):'',
         p&&p!=='nf'&&p!=='loading'?g(p.p8):'',
         p&&p!=='nf'&&p!=='loading'?g(p.p9):'',
         p&&p!=='nf'&&p!=='loading'?g(p.p10):''
